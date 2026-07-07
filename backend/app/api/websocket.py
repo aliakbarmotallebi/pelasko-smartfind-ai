@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.config import get_settings
 from app.models import ChatIncoming, ProductData, WebSocketMessage
 from app.services.gapgpt import GapGPTClient
 from app.services.search_engine import SearchEngine
@@ -55,6 +56,34 @@ async def _send_done(websocket: WebSocket) -> None:
     await _send_json(websocket, message.model_dump(exclude_none=True))
 
 
+def _product_key(product: ProductData) -> str:
+    return product.link or product.name
+
+
+def _products_for_display(
+    candidates: list[ProductData],
+    picked: ProductData | None,
+    limit: int,
+) -> list[ProductData]:
+    seen: set[str] = set()
+    display: list[ProductData] = []
+
+    if picked is not None:
+        display.append(picked)
+        seen.add(_product_key(picked))
+
+    for product in candidates:
+        if len(display) >= limit:
+            break
+        key = _product_key(product)
+        if key in seen:
+            continue
+        display.append(product)
+        seen.add(key)
+
+    return display
+
+
 async def handle_chat_message(
     websocket: WebSocket,
     user_message: str,
@@ -75,16 +104,14 @@ async def handle_chat_message(
         return
 
     picked = await gapgpt_client.pick_best_product(user_message, candidates)
-    if picked is None:
-        await _send_message(
-            websocket,
-            "متأسفانه محصول مناسبی برای درخواست شما در فروشگاه موجود نیست. "
-            "لطفاً با جزئیات بیشتری دوباره امتحان کنید.",
-        )
-        await _send_done(websocket)
-        return
+    display_limit = get_settings().display_top_k
+    display_products = _products_for_display(candidates, picked, display_limit)
 
-    await _send_product(websocket, picked)
+    if picked is None:
+        picked = candidates[0]
+
+    for product in display_products:
+        await _send_product(websocket, product)
 
     async for token in gapgpt_client.stream_sales_response(user_message, [picked]):
         if token:

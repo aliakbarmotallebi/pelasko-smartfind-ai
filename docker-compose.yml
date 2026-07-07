@@ -9,6 +9,7 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
       DATA_DIR: /app/data
       SEARCH_TOP_K: ${SEARCH_TOP_K:-10}
+      DISPLAY_TOP_K: ${DISPLAY_TOP_K:-5}
       SEARCH_MIN_SCORE: ${SEARCH_MIN_SCORE:-0.40}
       GAPGPT_API_KEY: ${GAPGPT_API_KEY:-}
       GAPGPT_MODEL: ${GAPGPT_MODEL:-gapgpt-qwen-3.5}
