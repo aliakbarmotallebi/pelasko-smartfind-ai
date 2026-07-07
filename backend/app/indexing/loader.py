@@ -72,10 +72,13 @@ def build_searchable_text(product: dict[str, Any]) -> str:
     return "\n\n".join(parts)
 
 
-def build_product_link(base_url: str, slug: str) -> str:
+def build_product_link(base_url: str, slug: str, product_id: str = "") -> str:
     base = base_url.rstrip("/")
     encoded_slug = quote(slug, safe="")
-    return f"{base}/product/{encoded_slug}"
+    if product_id.strip():
+        encoded_id = quote(product_id.strip(), safe="")
+        return f"{base}/products/{encoded_id}/{encoded_slug}"
+    return f"{base}/products/{encoded_slug}"
 
 
 def to_product_data(
@@ -84,6 +87,7 @@ def to_product_data(
     score: float = 0.0,
 ) -> ProductData:
     slug = str(product.get("slug", "")).strip()
+    product_id = str(product.get("id", "")).strip()
     return ProductData(
         name=str(product.get("name", "")).strip(),
         price=int(product.get("price", 0) or 0),
@@ -91,7 +95,7 @@ def to_product_data(
         specs=extract_spec_lines(product.get("specs")),
         description=str(product.get("description", "")).strip(),
         image=str(product.get("image", "")).strip(),
-        link=build_product_link(product_base_url, slug) if slug else "",
+        link=build_product_link(product_base_url, slug, product_id) if slug else "",
         score=round(score, 4),
     )
 
@@ -103,9 +107,10 @@ def normalize_products(
     normalized: list[dict[str, Any]] = []
     for product in products:
         slug = str(product.get("slug", "")).strip()
+        product_id = str(product.get("id", "")).strip()
         normalized.append(
             {
-                "id": str(product.get("id", "")).strip(),
+                "id": product_id,
                 "name": str(product.get("name", "")).strip(),
                 "slug": slug,
                 "price": int(product.get("price", 0) or 0),
@@ -113,7 +118,7 @@ def normalize_products(
                 "specs": extract_spec_lines(product.get("specs")),
                 "description": str(product.get("description", "")).strip(),
                 "image": str(product.get("image", "")).strip(),
-                "link": build_product_link(product_base_url, slug) if slug else "",
+                "link": build_product_link(product_base_url, slug, product_id) if slug else "",
                 "category": str(product.get("category", "")).strip(),
                 "brand": str(product.get("brand", "")).strip(),
                 "in_stock": bool(product.get("inStock", True)),
@@ -169,7 +174,6 @@ def format_products_for_prompt(products: list[ProductData]) -> str:
                     specs,
                     f"توضیحات: {description}",
                     f"شباهت جستجو: {score_text}",
-                    f"لینک: {product.link}",
                 ]
             )
         )
