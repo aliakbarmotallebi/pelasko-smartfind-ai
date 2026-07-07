@@ -18,7 +18,10 @@ ifeq ($(strip $(CLIENT_URL)),)
 CLIENT_URL := http://$(PUBLIC_HOST):$(CLIENT_PORT)
 endif
 
-.PHONY: help setup env urls up up-d down build restart restart-api restart-client logs logs-api logs-client health rebuild build-index shell clean clean-all ps
+WAIT_RETRIES ?= 60
+WAIT_INTERVAL ?= 5
+
+.PHONY: help setup env urls up up-d down build restart restart-api restart-client logs logs-api logs-client health wait-health rebuild rebuild-api build-index deploy shell clean clean-all ps
 
 help: ## Show available commands
 	@echo "Pelasko SmartFind AI (Docker)"
@@ -76,14 +79,37 @@ logs-api: ## Follow API logs
 logs-client: ## Follow client logs
 	$(COMPOSE) logs -f $(CLIENT_SERVICE)
 
-health: ## Check API health
+health: wait-health ## Check API health
 	@curl -fsS $(API_URL)/health | python3 -m json.tool
 
-rebuild: ## Rebuild FAISS index via API
+wait-health: ## Wait until API responds on /health
+	@echo "Waiting for API at $(API_URL)/health ..."
+	@i=0; \
+	while [ $$i -lt $(WAIT_RETRIES) ]; do \
+		if curl -fsS "$(API_URL)/health" >/dev/null 2>&1; then \
+			echo "API is ready."; \
+			exit 0; \
+		fi; \
+		i=$$((i + 1)); \
+		printf "  attempt %s/%s - not ready yet\n" "$$i" "$(WAIT_RETRIES)"; \
+		sleep $(WAIT_INTERVAL); \
+	done; \
+	echo "ERROR: API did not become ready. Check logs: make logs-api"; \
+	exit 1
+
+rebuild: build-index restart-api wait-health ## Rebuild FAISS index (works even if API is down)
+	@echo "Index rebuilt and API restarted."
+
+rebuild-api: wait-health ## Rebuild FAISS index via HTTP (API must already be running)
 	@curl -fsS -X POST $(API_URL)/rebuild | python3 -m json.tool
 
 build-index: ## Build FAISS index inside Docker
 	$(COMPOSE) run --rm $(SERVICE) python -m scripts.build_index
+
+deploy: ## Pull latest code, rebuild images, rebuild index
+	git pull
+	$(COMPOSE) up --build -d
+	$(MAKE) rebuild
 
 shell: ## Open shell in API container
 	$(COMPOSE) exec $(SERVICE) /bin/sh

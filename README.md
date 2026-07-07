@@ -117,8 +117,27 @@ make clean-all     # حذف volumeها
 
 ```bash
 make health
-make rebuild   # بعد از تغییر EMBEDDING_MODEL حتماً rebuild کنید
+make rebuild        # ساخت index داخل Docker + restart API (پیشنهادی)
+make rebuild-api    # فقط وقتی API از قبل بالا است
 ```
+
+### به‌روزرسانی روی سرور
+
+```bash
+git pull
+make deploy         # pull + build image + rebuild index
+```
+
+یا مرحله‌به‌مرحله:
+
+```bash
+git pull
+make up-d           # build مجدد image و اعمال env جدید
+make rebuild        # ساخت index با مدل جدید
+```
+
+> `make restart` فقط container را restart می‌کند و کد/env جدید را اعمال نمی‌کند.
+> بعد از تغییر `EMBEDDING_MODEL` حتماً `make rebuild` بزنید.
 
 ## WebSocket Chat
 
