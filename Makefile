@@ -104,7 +104,7 @@ rebuild-api: wait-health ## Rebuild FAISS index via HTTP (API must already be ru
 	@curl -fsS -X POST $(API_URL)/rebuild | python3 -m json.tool
 
 build-index: ## Build FAISS index inside Docker
-	$(COMPOSE) run --rm $(SERVICE) python -m scripts.build_index
+	$(COMPOSE) run --rm --entrypoint python $(SERVICE) -m scripts.build_index
 
 deploy: ## Pull latest code, rebuild images, rebuild index
 	git pull

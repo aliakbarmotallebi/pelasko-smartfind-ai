@@ -15,8 +15,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+class ClientDisconnectedError(Exception):
+    pass
+
+
 async def _send_json(websocket: WebSocket, payload: dict[str, Any]) -> None:
-    await websocket.send_json(payload)
+    try:
+        await websocket.send_json(payload)
+    except (WebSocketDisconnect, RuntimeError) as exc:
+        if isinstance(exc, WebSocketDisconnect):
+            raise ClientDisconnectedError from exc
+        if "close message" in str(exc).lower():
+            raise ClientDisconnectedError from exc
+        raise
 
 
 async def _send_message(websocket: WebSocket, content: str) -> None:
@@ -113,10 +124,19 @@ async def chat_websocket(websocket: WebSocket) -> None:
                     search_engine,
                     gapgpt_client,
                 )
+            except ClientDisconnectedError:
+                logger.info("Client disconnected during chat handling: %s", client_host)
+                return
+            except WebSocketDisconnect:
+                logger.info("WebSocket disconnected during chat handling: %s", client_host)
+                return
             except Exception as exc:
                 logger.exception("Chat handling failed: %s", exc)
-                await _send_error(websocket, "خطایی در پردازش پیام رخ داد. لطفاً دوباره تلاش کنید.")
-                await _send_done(websocket)
+                try:
+                    await _send_error(websocket, "خطایی در پردازش پیام رخ داد. لطفاً دوباره تلاش کنید.")
+                    await _send_done(websocket)
+                except (ClientDisconnectedError, WebSocketDisconnect):
+                    return
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected: %s", client_host)
@@ -125,5 +145,5 @@ async def chat_websocket(websocket: WebSocket) -> None:
         try:
             await _send_error(websocket, "اتصال با خطا مواجه شد.")
             await _send_done(websocket)
-        except Exception:
+        except (ClientDisconnectedError, WebSocketDisconnect, RuntimeError):
             pass

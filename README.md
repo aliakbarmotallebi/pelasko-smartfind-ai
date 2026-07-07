@@ -138,6 +138,7 @@ make rebuild        # ساخت index با مدل جدید
 
 > `make restart` فقط container را restart می‌کند و کد/env جدید را اعمال نمی‌کند.
 > بعد از تغییر `EMBEDDING_MODEL` حتماً `make rebuild` بزنید.
+> اگر metadata index با مدل فعلی نخواند، API در startup خودکار rebuild می‌کند.
 
 ## WebSocket Chat
 

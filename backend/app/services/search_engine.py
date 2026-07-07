@@ -11,7 +11,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from app.config import Settings, get_settings
-from app.indexing.builder import build_index
+from app.indexing.builder import build_index, read_index_meta
 from app.indexing.loader import to_product_data
 from app.models import ProductData
 
@@ -40,6 +40,7 @@ class SearchEngine:
 
     def _ensure_index_files(self) -> None:
         if self.index_path.exists() and self.products_path.exists():
+            self._ensure_index_matches_model()
             return
         if not self._auto_build:
             raise FileNotFoundError(
@@ -48,6 +49,23 @@ class SearchEngine:
             )
         logger.warning("Index files missing; building index automatically")
         build_index(self._settings)
+
+    def _ensure_index_matches_model(self) -> None:
+        meta = read_index_meta(self._settings.data_dir)
+        if meta is None:
+            logger.warning("Index metadata missing; rebuilding index")
+            build_index(self._settings)
+            return
+
+        indexed_model = str(meta.get("embedding_model", "")).strip()
+        current_model = self._settings.embedding_model.strip()
+        if indexed_model and indexed_model != current_model:
+            logger.warning(
+                "Index was built with '%s' but current model is '%s'; rebuilding index",
+                indexed_model,
+                current_model,
+            )
+            build_index(self._settings)
 
     def _load_model(self) -> SentenceTransformer:
         if self._model is None:
@@ -116,10 +134,14 @@ class SearchEngine:
 
             min_score = self._settings.search_min_score
             results: list[ProductData] = []
+            best_score = 0.0
             for score, idx in zip(scores[0], indices[0], strict=True):
                 if idx < 0:
                     continue
-                if float(score) < min_score:
+                score_value = float(score)
+                if score_value > best_score:
+                    best_score = score_value
+                if score_value < min_score:
                     continue
                 item = self._products[idx]
                 if not item.get("in_stock", True):
@@ -128,7 +150,15 @@ class SearchEngine:
                     to_product_data(
                         item,
                         self._settings.product_base_url,
-                        score=float(score),
+                        score=score_value,
                     )
+                )
+
+            if not results:
+                logger.info(
+                    "No products matched query '%s' (best_score=%.4f, min_score=%.2f)",
+                    normalized_query,
+                    best_score,
+                    min_score,
                 )
             return results
