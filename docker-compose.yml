@@ -1,0 +1,42 @@
+services:
+  smartfind-api:
+    build: .
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      PRODUCTS_API_URL: ${PRODUCTS_API_URL:-https://pelasko-morvarid.ir/api/products}
+      PRODUCT_BASE_URL: ${PRODUCT_BASE_URL:-https://pelasko-morvarid.ir}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      DATA_DIR: /app/data
+      SEARCH_TOP_K: ${SEARCH_TOP_K:-5}
+      GAPGPT_API_KEY: ${GAPGPT_API_KEY:-}
+      GAPGPT_MODEL: ${GAPGPT_MODEL:-gapgpt-qwen-3.5}
+      GAPGPT_BASE_URL: ${GAPGPT_BASE_URL:-https://api.gapgpt.app/v1}
+      HOST: 0.0.0.0
+      PORT: 8000
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+      CLIENT_PORT: ${CLIENT_PORT:-5173}
+      API_URL: ${API_URL:-}
+      CLIENT_URL: ${CLIENT_URL:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      INDEX_REBUILD_ENABLED: ${INDEX_REBUILD_ENABLED:-true}
+      INDEX_REBUILD_INTERVAL_HOURS: ${INDEX_REBUILD_INTERVAL_HOURS:-24}
+    volumes:
+      - search-data:/app/data
+    restart: unless-stopped
+
+  smartfind-client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_WS_URL: ${VITE_WS_URL:-}
+    ports:
+      - "${CLIENT_PORT:-5173}:80"
+    depends_on:
+      - smartfind-api
+    restart: unless-stopped
+
+volumes:
+  search-data:
