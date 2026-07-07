@@ -6,9 +6,10 @@ services:
     environment:
       PRODUCTS_API_URL: ${PRODUCTS_API_URL:-https://pelasko-morvarid.ir/api/products}
       PRODUCT_BASE_URL: ${PRODUCT_BASE_URL:-https://pelasko-morvarid.ir}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
       DATA_DIR: /app/data
-      SEARCH_TOP_K: ${SEARCH_TOP_K:-5}
+      SEARCH_TOP_K: ${SEARCH_TOP_K:-10}
+      SEARCH_MIN_SCORE: ${SEARCH_MIN_SCORE:-0.40}
       GAPGPT_API_KEY: ${GAPGPT_API_KEY:-}
       GAPGPT_MODEL: ${GAPGPT_MODEL:-gapgpt-qwen-3.5}
       GAPGPT_BASE_URL: ${GAPGPT_BASE_URL:-https://api.gapgpt.app/v1}

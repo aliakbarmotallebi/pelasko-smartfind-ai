@@ -114,11 +114,16 @@ class SearchEngine:
                 min(limit, len(self._products)),
             )
 
+            min_score = self._settings.search_min_score
             results: list[ProductData] = []
             for score, idx in zip(scores[0], indices[0], strict=True):
                 if idx < 0:
                     continue
+                if float(score) < min_score:
+                    continue
                 item = self._products[idx]
+                if not item.get("in_stock", True):
+                    continue
                 results.append(
                     to_product_data(
                         item,

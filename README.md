@@ -78,6 +78,9 @@ make up-d
 | `CLIENT_URL` | آدرس کامل کلاینت (اختیاری) |
 | `CORS_ORIGINS` | originهای مجاز (اختیاری) |
 | `GAPGPT_API_KEY` | کلید GapGPT |
+| `EMBEDDING_MODEL` | مدل embedding (پیش‌فرض: multilingual برای فارسی) |
+| `SEARCH_TOP_K` | تعداد کاندیداهای جستجو (پیش‌فرض: 10) |
+| `SEARCH_MIN_SCORE` | حداقل شباهت برای قبول نتیجه (پیش‌فرض: 0.40) |
 | `PRODUCTS_API_URL` | API محصولات |
 | `INDEX_REBUILD_INTERVAL_HOURS` | بازسازی خودکار index (پیش‌فرض: 24) |
 
@@ -114,7 +117,7 @@ make clean-all     # حذف volumeها
 
 ```bash
 make health
-make rebuild
+make rebuild   # بعد از تغییر EMBEDDING_MODEL حتماً rebuild کنید
 ```
 
 ## WebSocket Chat

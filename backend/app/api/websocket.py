@@ -53,9 +53,9 @@ async def handle_chat_message(
     await _send_status(websocket, "دارم محصولات مناسب را بررسی می‌کنم...")
 
     search_query = await gapgpt_client.extract_search_query(user_message)
-    products = await asyncio.to_thread(search_engine.search, search_query)
+    candidates = await asyncio.to_thread(search_engine.search, search_query)
 
-    if not products:
+    if not candidates:
         await _send_message(
             websocket,
             "متأسفانه محصول مناسبی پیدا نکردم. لطفاً درخواست خود را دقیق‌تر بنویسید.",
@@ -63,10 +63,19 @@ async def handle_chat_message(
         await _send_done(websocket)
         return
 
-    for product in products:
-        await _send_product(websocket, product)
+    picked = await gapgpt_client.pick_best_product(user_message, candidates)
+    if picked is None:
+        await _send_message(
+            websocket,
+            "متأسفانه محصول مناسبی برای درخواست شما در فروشگاه موجود نیست. "
+            "لطفاً با جزئیات بیشتری دوباره امتحان کنید.",
+        )
+        await _send_done(websocket)
+        return
 
-    async for token in gapgpt_client.stream_sales_response(user_message, products):
+    await _send_product(websocket, picked)
+
+    async for token in gapgpt_client.stream_sales_response(user_message, [picked]):
         if token:
             await _send_message(websocket, token)
 

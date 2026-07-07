@@ -22,11 +22,17 @@ class Settings(BaseSettings):
         alias="PRODUCT_BASE_URL",
     )
     embedding_model: str = Field(
-        default="sentence-transformers/all-MiniLM-L6-v2",
+        default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         alias="EMBEDDING_MODEL",
     )
     data_dir: str = Field(default="data", alias="DATA_DIR")
-    search_top_k: int = Field(default=5, alias="SEARCH_TOP_K", ge=1, le=20)
+    search_top_k: int = Field(default=10, alias="SEARCH_TOP_K", ge=1, le=20)
+    search_min_score: float = Field(
+        default=0.40,
+        alias="SEARCH_MIN_SCORE",
+        ge=0.0,
+        le=1.0,
+    )
     products_api_timeout: int = Field(default=60, alias="PRODUCTS_API_TIMEOUT", ge=5)
 
     index_rebuild_enabled: bool = Field(default=True, alias="INDEX_REBUILD_ENABLED")

@@ -156,6 +156,8 @@ def format_products_for_prompt(products: list[ProductData]) -> str:
     for index, product in enumerate(products, start=1):
         colors = "، ".join(product.colors) if product.colors else "نامشخص"
         specs = "\n".join(f"- {spec}" for spec in product.specs) if product.specs else "- نامشخص"
+        description = product.description.strip() if product.description else "نامشخص"
+        score_text = f"{product.score:.2f}" if product.score else "نامشخص"
         blocks.append(
             "\n".join(
                 [
@@ -165,6 +167,8 @@ def format_products_for_prompt(products: list[ProductData]) -> str:
                     f"رنگ‌ها: {colors}",
                     "مشخصات:",
                     specs,
+                    f"توضیحات: {description}",
+                    f"شباهت جستجو: {score_text}",
                     f"لینک: {product.link}",
                 ]
             )

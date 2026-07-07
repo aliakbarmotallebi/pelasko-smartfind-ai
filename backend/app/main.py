@@ -52,7 +52,7 @@ def create_app() -> FastAPI:
     application = FastAPI(
         title="Pelasko SmartFind AI",
         description="Persian AI shopping assistant with FAISS semantic search and GapGPT",
-        version="2.1.0",
+        version="2.2.0",
         lifespan=lifespan,
     )
 
