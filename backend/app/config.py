@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     )
     data_dir: str = Field(default="data", alias="DATA_DIR")
     search_top_k: int = Field(default=10, alias="SEARCH_TOP_K", ge=1, le=20)
-    display_top_k: int = Field(default=5, alias="DISPLAY_TOP_K", ge=1, le=10)
+    display_top_k: int = Field(default=3, alias="DISPLAY_TOP_K", ge=1, le=3)
     search_min_score: float = Field(
         default=0.40,
         alias="SEARCH_MIN_SCORE",
