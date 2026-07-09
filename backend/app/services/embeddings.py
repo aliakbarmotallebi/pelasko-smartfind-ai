@@ -75,6 +75,12 @@ class SentenceTransformerBackend:
             self._model = SentenceTransformer(self._model_name, trust_remote_code=True)
         return self._model
 
+    def _prepare_texts(self, texts: list[str], *, role: str) -> list[str]:
+        if "e5" not in self._model_name.lower():
+            return texts
+        prefix = "query: " if role == "query" else "passage: "
+        return [f"{prefix}{text}" for text in texts]
+
     def encode_passages(
         self,
         texts: list[str],
@@ -84,7 +90,7 @@ class SentenceTransformerBackend:
     ) -> np.ndarray:
         model = self._load_model()
         embeddings = model.encode(
-            texts,
+            self._prepare_texts(texts, role="passage"),
             batch_size=batch_size,
             show_progress_bar=show_progress_bar,
             convert_to_numpy=True,
@@ -100,7 +106,7 @@ class SentenceTransformerBackend:
     ) -> np.ndarray:
         model = self._load_model()
         embeddings = model.encode(
-            texts,
+            self._prepare_texts(texts, role="query"),
             convert_to_numpy=True,
             normalize_embeddings=normalize_embeddings,
         )

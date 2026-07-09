@@ -6,7 +6,7 @@ services:
     environment:
       PRODUCTS_API_URL: ${PRODUCTS_API_URL:-https://pelasko-morvarid.ir/api/products}
       PRODUCT_BASE_URL: ${PRODUCT_BASE_URL:-https://pelasko-morvarid.ir}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-xmanii/maux-gte-persian}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-base}
       DATA_DIR: /app/data
       SEARCH_TOP_K: ${SEARCH_TOP_K:-10}
       DISPLAY_TOP_K: ${DISPLAY_TOP_K:-3}

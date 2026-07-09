@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         alias="PRODUCT_BASE_URL",
     )
     embedding_model: str = Field(
-        default="xmanii/maux-gte-persian",
+        default="intfloat/multilingual-e5-base",
         alias="EMBEDDING_MODEL",
     )
     hakim_api_key: str = Field(default="mcinext", alias="HAKIM_API_KEY")
