@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     )
     gapgpt_timeout: int = Field(default=120, alias="GAPGPT_TIMEOUT", ge=10)
 
+    chat_log_enabled: bool = Field(default=True, alias="CHAT_LOG_ENABLED")
+    chat_log_dir: str = Field(default="logs", alias="CHAT_LOG_DIR")
+
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     host: str = Field(default="0.0.0.0", alias="HOST")
     port: int = Field(default=8000, alias="PORT")

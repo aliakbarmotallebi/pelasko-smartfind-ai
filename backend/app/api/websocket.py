@@ -8,6 +8,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.config import get_settings
 from app.models import ChatIncoming, ProductData, WebSocketMessage
+from app.services.chat_logger import (
+    build_embedding_log,
+    build_search_log,
+    get_chat_logger,
+)
 from app.services.gapgpt import GapGPTClient
 from app.services.search_engine import SearchEngine
 
@@ -89,35 +94,115 @@ async def handle_chat_message(
     user_message: str,
     search_engine: SearchEngine,
     gapgpt_client: GapGPTClient,
+    *,
+    client_host: str = "unknown",
 ) -> None:
-    await _send_status(websocket, "دارم محصولات مناسب را بررسی می‌کنم...")
+    chat_logger = get_chat_logger()
+    trace = chat_logger.new_trace(client_host=client_host, user_message=user_message)
+    sent_statuses: list[str] = []
+    sent_messages: list[str] = []
+    sent_products: list[dict] = []
+    sent_errors: list[str] = []
 
-    search_query = await gapgpt_client.extract_search_query(user_message)
-    candidates = await asyncio.to_thread(search_engine.search, search_query)
+    try:
+        await _send_status(websocket, "دارم محصولات مناسب را بررسی می‌کنم...")
+        sent_statuses.append("دارم محصولات مناسب را بررسی می‌کنم...")
 
-    if not candidates:
-        await _send_message(
-            websocket,
-            "متأسفانه محصول مناسبی پیدا نکردم. لطفاً درخواست خود را دقیق‌تر بنویسید.",
+        search_query = await gapgpt_client.extract_search_query(user_message)
+        trace.llm_query_extraction = {
+            "input": user_message,
+            "output": search_query,
+            "model": get_settings().gapgpt_model,
+        }
+
+        search_details = await asyncio.to_thread(
+            search_engine.search_with_details,
+            search_query,
         )
+        candidates = search_details.results
+
+        trace.embedding = build_embedding_log(
+            query=search_details.query,
+            model_name=search_details.embedding_model,
+            vector=search_details.embedding_vector,
+        )
+        trace.search = build_search_log(
+            query=search_details.query,
+            min_score=search_details.min_score,
+            top_k=search_details.top_k,
+            hits=[
+                {
+                    "rank": index + 1,
+                    "score": round(hit.score, 6),
+                    "passed_min_score": hit.passed_min_score,
+                    "in_stock": hit.in_stock,
+                    "product": hit.product.model_dump(),
+                }
+                for index, hit in enumerate(search_details.hits)
+            ],
+            results=candidates,
+        )
+
+        if not candidates:
+            no_result_message = (
+                "متأسفانه محصول مناسبی پیدا نکردم. لطفاً درخواست خود را دقیق‌تر بنویسید."
+            )
+            await _send_message(websocket, no_result_message)
+            sent_messages.append(no_result_message)
+            trace.sent_to_user = {
+                "statuses": sent_statuses,
+                "messages": sent_messages,
+                "products": sent_products,
+                "errors": sent_errors,
+            }
+            await _send_done(websocket)
+            return
+
+        picked, rerank_meta = await gapgpt_client.pick_best_product(user_message, candidates)
+        trace.llm_rerank = {
+            **rerank_meta,
+            "picked_product": picked.model_dump() if picked else None,
+        }
+
+        display_limit = get_settings().display_top_k
+        display_products = _products_for_display(candidates, picked, display_limit)
+
+        if picked is None:
+            picked = candidates[0]
+
+        for product in display_products:
+            await _send_product(websocket, product)
+            sent_products.append(product.model_dump())
+
+        sales_tokens: list[str] = []
+        async for token in gapgpt_client.stream_sales_response(user_message, [picked]):
+            if token:
+                sales_tokens.append(token)
+                await _send_message(websocket, token)
+
+        sales_response = "".join(sales_tokens)
+        trace.llm_sales = {
+            "model": get_settings().gapgpt_model,
+            "input_user_message": user_message,
+            "input_products": [picked.model_dump()],
+            "output": sales_response,
+            "streamed_tokens": sales_tokens,
+        }
+        sent_messages.extend(sales_tokens)
+
+        trace.sent_to_user = {
+            "statuses": sent_statuses,
+            "messages": sent_messages,
+            "full_message": sales_response,
+            "products": sent_products,
+            "errors": sent_errors,
+        }
         await _send_done(websocket)
-        return
-
-    picked = await gapgpt_client.pick_best_product(user_message, candidates)
-    display_limit = get_settings().display_top_k
-    display_products = _products_for_display(candidates, picked, display_limit)
-
-    if picked is None:
-        picked = candidates[0]
-
-    for product in display_products:
-        await _send_product(websocket, product)
-
-    async for token in gapgpt_client.stream_sales_response(user_message, [picked]):
-        if token:
-            await _send_message(websocket, token)
-
-    await _send_done(websocket)
+    except Exception as exc:
+        trace.error = str(exc)
+        raise
+    finally:
+        chat_logger.save(trace)
 
 
 @router.websocket("/ws/chat")
@@ -150,6 +235,7 @@ async def chat_websocket(websocket: WebSocket) -> None:
                     incoming.message.strip(),
                     search_engine,
                     gapgpt_client,
+                    client_host=client_host,
                 )
             except ClientDisconnectedError:
                 logger.info("Client disconnected during chat handling: %s", client_host)

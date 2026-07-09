@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import pickle
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,25 @@ from app.indexing.loader import to_product_data
 from app.models import ProductData
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SearchHitDetail:
+    product: ProductData
+    score: float
+    passed_min_score: bool
+    in_stock: bool
+
+
+@dataclass
+class SearchDetails:
+    query: str
+    embedding_model: str
+    embedding_vector: list[float]
+    min_score: float
+    top_k: int
+    hits: list[SearchHitDetail]
+    results: list[ProductData]
 
 
 class SearchEngine:
@@ -106,9 +126,20 @@ class SearchEngine:
             return total
 
     def search(self, query: str, top_k: int | None = None) -> list[ProductData]:
+        return self.search_with_details(query, top_k=top_k).results
+
+    def search_with_details(self, query: str, top_k: int | None = None) -> SearchDetails:
         normalized_query = query.strip()
         if not normalized_query:
-            return []
+            return SearchDetails(
+                query="",
+                embedding_model=self._settings.embedding_model,
+                embedding_vector=[],
+                min_score=self._settings.search_min_score,
+                top_k=top_k or self._settings.search_top_k,
+                hits=[],
+                results=[],
+            )
 
         limit = top_k or self._settings.search_top_k
 
@@ -122,32 +153,45 @@ class SearchEngine:
             if not isinstance(query_embedding, np.ndarray):
                 raise RuntimeError("Failed to encode query")
 
+            embedding_vector = query_embedding[0].astype(float).tolist()
+
             scores, indices = self._index.search(
                 query_embedding.astype(np.float32),
                 min(limit, len(self._products)),
             )
 
             min_score = self._settings.search_min_score
+            hits: list[SearchHitDetail] = []
             results: list[ProductData] = []
             best_score = 0.0
+
             for score, idx in zip(scores[0], indices[0], strict=True):
                 if idx < 0:
                     continue
+
                 score_value = float(score)
                 if score_value > best_score:
                     best_score = score_value
-                if score_value < min_score:
-                    continue
+
                 item = self._products[idx]
-                if not item.get("in_stock", True):
-                    continue
-                results.append(
-                    to_product_data(
-                        item,
-                        self._settings.product_base_url,
+                in_stock = bool(item.get("in_stock", True))
+                passed_min_score = score_value >= min_score
+                product = to_product_data(
+                    item,
+                    self._settings.product_base_url,
+                    score=score_value,
+                )
+                hits.append(
+                    SearchHitDetail(
+                        product=product,
                         score=score_value,
+                        passed_min_score=passed_min_score,
+                        in_stock=in_stock,
                     )
                 )
+
+                if passed_min_score and in_stock:
+                    results.append(product)
 
             if not results:
                 logger.info(
@@ -156,4 +200,13 @@ class SearchEngine:
                     best_score,
                     min_score,
                 )
-            return results
+
+            return SearchDetails(
+                query=normalized_query,
+                embedding_model=model.model_name,
+                embedding_vector=embedding_vector,
+                min_score=min_score,
+                top_k=limit,
+                hits=hits,
+                results=results,
+            )

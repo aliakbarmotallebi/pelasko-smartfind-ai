@@ -81,6 +81,8 @@ make up-d
 | `EMBEDDING_MODEL` | مدل embedding (پیش‌فرض: `xmanii/maux-gte-persian` — فارسی، دانلود روی سرور) |
 | `SEARCH_TOP_K` | تعداد کاندیداهای جستجو (پیش‌فرض: 10) |
 | `SEARCH_MIN_SCORE` | حداقل شباهت برای قبول نتیجه (پیش‌فرض: 0.40) |
+| `CHAT_LOG_ENABLED` | ذخیره لاگ JSON هر چت (پیش‌فرض: true) |
+| `CHAT_LOG_DIR` | مسیر لاگ‌ها (پیش‌فرض: `/app/logs` → `./logs` روی سرور) |
 | `PRODUCTS_API_URL` | API محصولات |
 | `INDEX_REBUILD_INTERVAL_HOURS` | بازسازی خودکار index (پیش‌فرض: 24) |
 

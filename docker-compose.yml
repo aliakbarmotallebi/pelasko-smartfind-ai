@@ -24,9 +24,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       INDEX_REBUILD_ENABLED: ${INDEX_REBUILD_ENABLED:-true}
       INDEX_REBUILD_INTERVAL_HOURS: ${INDEX_REBUILD_INTERVAL_HOURS:-24}
+      CHAT_LOG_ENABLED: ${CHAT_LOG_ENABLED:-true}
+      CHAT_LOG_DIR: ${CHAT_LOG_DIR:-/app/logs}
     volumes:
       - search-data:/app/data
       - hf-cache:/root/.cache/huggingface
+      - ./logs:/app/logs
     restart: unless-stopped
 
   smartfind-client:

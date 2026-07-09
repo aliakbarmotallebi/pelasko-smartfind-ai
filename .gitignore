@@ -5,6 +5,7 @@ __pycache__/
 venv/
 .env
 data/
+logs/
 *.pkl
 *.faiss
 .DS_Store

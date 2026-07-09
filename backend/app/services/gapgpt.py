@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import AsyncIterator
+from typing import Any
 
 from openai import AsyncOpenAI
 
@@ -74,12 +75,17 @@ class GapGPTClient:
         self,
         user_message: str,
         products: list[ProductData],
-    ) -> ProductData | None:
+    ) -> tuple[ProductData | None, dict[str, Any]]:
         if not products:
-            return None
+            return None, {"raw_response": "", "picked_index": 0, "used_fallback": True}
 
         if not self.enabled:
-            return products[0]
+            return products[0], {
+                "raw_response": "",
+                "picked_index": 1,
+                "used_fallback": True,
+                "reason": "gapgpt_disabled",
+            }
 
         prompt = (
             f"درخواست کاربر:\n{user_message}\n\n"
@@ -100,13 +106,29 @@ class GapGPTClient:
             picked = self._parse_product_index(content, len(products))
             if picked == 0:
                 logger.info("Rerank rejected all products for: %s", user_message)
-                return None
+                return None, {
+                    "raw_response": content,
+                    "picked_index": 0,
+                    "used_fallback": False,
+                    "prompt": prompt,
+                }
             selected = products[picked - 1]
             logger.info("Rerank picked product %d: %s", picked, selected.name)
-            return selected
+            return selected, {
+                "raw_response": content,
+                "picked_index": picked,
+                "used_fallback": False,
+                "prompt": prompt,
+            }
         except Exception as exc:
             logger.warning("Product rerank failed, using top search result: %s", exc)
-            return products[0]
+            return products[0], {
+                "raw_response": "",
+                "picked_index": 1,
+                "used_fallback": True,
+                "reason": str(exc),
+                "prompt": prompt,
+            }
 
     @staticmethod
     def _parse_product_index(content: str, total: int) -> int:
