@@ -14,7 +14,7 @@ from app.services.chat_logger import (
     get_chat_logger,
 )
 from app.services.gapgpt import GapGPTClient
-from app.services.search_engine import SearchEngine
+from app.services.search_engine import SearchEngine, should_skip_rerank
 
 logger = logging.getLogger(__name__)
 
@@ -108,11 +108,12 @@ async def handle_chat_message(
         await _send_status(websocket, "دارم محصولات مناسب را بررسی می‌کنم...")
         sent_statuses.append("دارم محصولات مناسب را بررسی می‌کنم...")
 
-        search_query = await gapgpt_client.extract_search_query(user_message)
+        search_query, extraction_meta = await gapgpt_client.extract_search_query(user_message)
         trace.llm_query_extraction = {
             "input": user_message,
             "output": search_query,
             "model": get_settings().gapgpt_model,
+            **extraction_meta,
         }
 
         search_details = await asyncio.to_thread(
@@ -134,6 +135,8 @@ async def handle_chat_message(
                 {
                     "rank": index + 1,
                     "score": round(hit.score, 6),
+                    "vector_score": round(hit.vector_score, 6),
+                    "lexical_score": round(hit.lexical_score, 6),
                     "passed_min_score": hit.passed_min_score,
                     "in_stock": hit.in_stock,
                     "product": hit.product.model_dump(),
@@ -158,9 +161,15 @@ async def handle_chat_message(
             await _send_done(websocket)
             return
 
-        picked, rerank_meta = await gapgpt_client.pick_best_product(user_message, candidates)
+        skip_rerank = should_skip_rerank(search_query, search_details.hits)
+        picked, rerank_meta = await gapgpt_client.pick_best_product(
+            search_query,
+            candidates,
+            skip=skip_rerank,
+        )
         trace.llm_rerank = {
             **rerank_meta,
+            "skip_rerank": skip_rerank,
             "picked_product": picked.model_dump() if picked else None,
         }
 
@@ -175,7 +184,7 @@ async def handle_chat_message(
             sent_products.append(product.model_dump())
 
         sales_tokens: list[str] = []
-        async for token in gapgpt_client.stream_sales_response(user_message, [picked]):
+        async for token in gapgpt_client.stream_sales_response(search_query, [picked]):
             if token:
                 sales_tokens.append(token)
                 await _send_message(websocket, token)
@@ -183,7 +192,7 @@ async def handle_chat_message(
         sales_response = "".join(sales_tokens)
         trace.llm_sales = {
             "model": get_settings().gapgpt_model,
-            "input_user_message": user_message,
+            "input_user_message": search_query,
             "input_products": [picked.model_dump()],
             "output": sales_response,
             "streamed_tokens": sales_tokens,

@@ -12,6 +12,11 @@ import numpy as np
 
 from app.config import Settings, get_settings
 from app.services.embeddings import EmbeddingBackend, create_embedding_backend
+from app.services.lexical_search import (
+    build_token_weights,
+    has_strong_title_match,
+    title_match_score,
+)
 from app.indexing.builder import build_index, read_index_meta
 from app.indexing.loader import to_product_data
 from app.models import ProductData
@@ -23,6 +28,8 @@ logger = logging.getLogger(__name__)
 class SearchHitDetail:
     product: ProductData
     score: float
+    vector_score: float
+    lexical_score: float
     passed_min_score: bool
     in_stock: bool
 
@@ -142,6 +149,10 @@ class SearchEngine:
             )
 
         limit = top_k or self._settings.search_top_k
+        pool_size = min(
+            self._settings.search_candidate_pool,
+            len(self._products),
+        )
 
         with self._lock:
             if self._index is None or self._products is None:
@@ -157,41 +168,62 @@ class SearchEngine:
 
             scores, indices = self._index.search(
                 query_embedding.astype(np.float32),
-                min(limit, len(self._products)),
+                pool_size,
             )
 
+            product_names = [str(item.get("name", "")) for item in self._products]
+            token_weights = build_token_weights(normalized_query, product_names)
+            vector_weight = self._settings.search_vector_weight
+            lexical_weight = self._settings.search_lexical_weight
+            weight_total = vector_weight + lexical_weight
+            if weight_total <= 0:
+                vector_weight, lexical_weight, weight_total = 0.55, 0.45, 1.0
+            vector_weight /= weight_total
+            lexical_weight /= weight_total
+
             min_score = self._settings.search_min_score
-            hits: list[SearchHitDetail] = []
-            results: list[ProductData] = []
+            ranked_hits: list[SearchHitDetail] = []
             best_score = 0.0
 
             for score, idx in zip(scores[0], indices[0], strict=True):
                 if idx < 0:
                     continue
 
-                score_value = float(score)
-                if score_value > best_score:
-                    best_score = score_value
-
+                vector_score = float(score)
                 item = self._products[idx]
+                product_name = str(item.get("name", ""))
+                lexical_score = title_match_score(
+                    normalized_query,
+                    product_name,
+                    token_weights,
+                )
+                hybrid_score = (vector_weight * vector_score) + (lexical_weight * lexical_score)
+                if hybrid_score > best_score:
+                    best_score = hybrid_score
+
                 in_stock = bool(item.get("in_stock", True))
-                passed_min_score = score_value >= min_score
+                passed_min_score = hybrid_score >= min_score
                 product = to_product_data(
                     item,
                     self._settings.product_base_url,
-                    score=score_value,
+                    score=hybrid_score,
                 )
-                hits.append(
+                ranked_hits.append(
                     SearchHitDetail(
                         product=product,
-                        score=score_value,
+                        score=hybrid_score,
+                        vector_score=vector_score,
+                        lexical_score=lexical_score,
                         passed_min_score=passed_min_score,
                         in_stock=in_stock,
                     )
                 )
 
-                if passed_min_score and in_stock:
-                    results.append(product)
+            ranked_hits.sort(key=lambda hit: hit.score, reverse=True)
+            hits = ranked_hits[:limit]
+            results = [
+                hit.product for hit in hits if hit.passed_min_score and hit.in_stock
+            ]
 
             if not results:
                 logger.info(
@@ -210,3 +242,20 @@ class SearchEngine:
                 hits=hits,
                 results=results,
             )
+
+
+def should_skip_rerank(
+    query: str,
+    hits: list[SearchHitDetail],
+    settings: Settings | None = None,
+) -> bool:
+    if len(hits) <= 1:
+        return True
+
+    cfg = settings or get_settings()
+    top = hits[0]
+    second = hits[1]
+    token_weights = build_token_weights(query, [hit.product.name for hit in hits[:5]])
+    if not has_strong_title_match(query, top.product.name, token_weights):
+        return False
+    return (top.score - second.score) >= cfg.search_skip_rerank_gap

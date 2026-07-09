@@ -34,13 +34,41 @@ class Settings(BaseSettings):
     hakim_max_retries: int = Field(default=3, alias="HAKIM_MAX_RETRIES", ge=1, le=10)
     hakim_retry_delay: int = Field(default=2, alias="HAKIM_RETRY_DELAY", ge=1)
     data_dir: str = Field(default="data", alias="DATA_DIR")
-    search_top_k: int = Field(default=10, alias="SEARCH_TOP_K", ge=1, le=20)
+    search_top_k: int = Field(default=5, alias="SEARCH_TOP_K", ge=1, le=20)
     display_top_k: int = Field(default=3, alias="DISPLAY_TOP_K", ge=1, le=3)
     search_min_score: float = Field(
         default=0.40,
         alias="SEARCH_MIN_SCORE",
         ge=0.0,
         le=1.0,
+    )
+    search_vector_weight: float = Field(
+        default=0.55,
+        alias="SEARCH_VECTOR_WEIGHT",
+        ge=0.0,
+        le=1.0,
+    )
+    search_lexical_weight: float = Field(
+        default=0.45,
+        alias="SEARCH_LEXICAL_WEIGHT",
+        ge=0.0,
+        le=1.0,
+    )
+    search_candidate_pool: int = Field(
+        default=30,
+        alias="SEARCH_CANDIDATE_POOL",
+        ge=5,
+        le=100,
+    )
+    search_skip_rerank_gap: float = Field(
+        default=0.015,
+        alias="SEARCH_SKIP_RERANK_GAP",
+        ge=0.0,
+        le=0.5,
+    )
+    gapgpt_fast_sales_template: bool = Field(
+        default=True,
+        alias="GAPGPT_FAST_SALES_TEMPLATE",
     )
     products_api_timeout: int = Field(default=60, alias="PRODUCTS_API_TIMEOUT", ge=5)
 

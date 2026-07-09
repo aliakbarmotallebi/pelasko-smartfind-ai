@@ -10,30 +10,31 @@ from openai import AsyncOpenAI
 from app.config import Settings, get_settings
 from app.indexing.loader import format_products_for_prompt
 from app.models import ProductData
+from app.services.lexical_search import (
+    extract_latest_user_turn,
+    should_use_fast_query_extraction,
+)
 
 logger = logging.getLogger(__name__)
 
 INTENT_SYSTEM_PROMPT = (
-    "تو یک دستیار فروشگاه آنلاین فارسی هستی. "
-    "از پیام کاربر فقط یک عبارت جستجوی کوتاه و دقیق فارسی برای یافتن محصول استخراج کن. "
-    "فقط همان عبارت جستجو را بنویس، بدون توضیح اضافه."
+    "از آخرین پیام کاربر فقط یک عبارت جستجوی کوتاه فارسی برای یافتن محصول استخراج کن. "
+    "فقط همان عبارت را بنویس."
 )
 
 RERANK_SYSTEM_PROMPT = (
-    "تو یک دستیار فروشگاه آنلاین فارسی هستی. "
-    "از میان محصولات داده‌شده، شماره بهترین محصول مناسب برای درخواست کاربر را انتخاب کن. "
-    "محصول باید واقعاً با نیاز کاربر مرتبط باشد، نه فقط شباهت ظاهری. "
-    "اگر هیچ محصولی واقعاً مناسب نیست، فقط عدد 0 را بنویس. "
-    "فقط یک عدد بنویس، بدون هیچ توضیح اضافه."
+    "شماره بهترین محصول را برای درخواست کاربر انتخاب کن. "
+    "محصول باید با نوع کالا (مثلاً کلمن، قابلمه) همخوان باشد، نه فقط واژه‌های توصیفی مثل کوچک. "
+    "اگر هیچ‌کدام مناسب نیست فقط 0 بنویس. فقط یک عدد."
 )
 
 SALES_SYSTEM_PROMPT = (
-    "تو یک دستیار فروش حرفه‌ای فارسی هستی. "
-    "پاسخ را کوتاه (حداکثر ۳-۴ جمله)، محترمانه و دوستانه بنویس. "
-    "فقط بر اساس محصولات داده‌شده پاسخ بده و اطلاعات جعلی نساز. "
-    "هرگز لینک، URL یا آدرس اینترنتی در پاسخ ننویس. "
-    "از لیست‌بندی، بولت‌پوینت و ایموجی زیاد خودداری کن. "
-    "اگر محصول داده‌شده با درخواست کاربر مرتبط نیست، صادقانه بگو محصول مناسبی موجود نیست."
+    "تو یک دستیار فروش فارسی هستی. "
+    "حداکثر ۲ جمله کوتاه بنویس. "
+    "فقط از نام، قیمت، رنگ‌ها، مشخصات و توضیحات داده‌شده استفاده کن. "
+    "هرگز کاربرد، مناسب سفر، روزمره، مسافرتی یا ویژگی‌ای که در داده نیست ننویس. "
+    "اگر specs یا description خالی یا نامشخص است، فقط نام، قیمت و رنگ را بگو. "
+    "لینک ننویس."
 )
 
 
@@ -50,34 +51,58 @@ class GapGPTClient:
     def enabled(self) -> bool:
         return self._settings.gapgpt_enabled
 
-    async def extract_search_query(self, user_message: str) -> str:
+    async def extract_search_query(self, user_message: str) -> tuple[str, dict[str, Any]]:
+        latest_turn = extract_latest_user_turn(user_message)
+        if should_use_fast_query_extraction(user_message):
+            logger.info("Fast query extraction: %s", latest_turn)
+            return latest_turn, {"method": "fast", "input": user_message}
+
         if not self.enabled:
-            return user_message.strip()
+            return latest_turn, {"method": "fallback", "input": user_message}
 
         try:
             response = await self._client.chat.completions.create(
                 model=self._settings.gapgpt_model,
-                temperature=0.2,
+                temperature=0.0,
+                max_tokens=32,
                 messages=[
                     {"role": "system", "content": INTENT_SYSTEM_PROMPT},
                     {"role": "user", "content": user_message},
                 ],
             )
             content = response.choices[0].message.content
-            query = content.strip() if content else user_message.strip()
+            query = content.strip() if content else latest_turn
             logger.info("Extracted search query: %s", query)
-            return query or user_message.strip()
+            return query or latest_turn, {
+                "method": "llm",
+                "input": user_message,
+                "latest_turn": latest_turn,
+            }
         except Exception as exc:
-            logger.warning("Intent extraction failed, using original message: %s", exc)
-            return user_message.strip()
+            logger.warning("Intent extraction failed, using latest user turn: %s", exc)
+            return latest_turn, {
+                "method": "fallback",
+                "input": user_message,
+                "reason": str(exc),
+            }
 
     async def pick_best_product(
         self,
-        user_message: str,
+        search_query: str,
         products: list[ProductData],
+        *,
+        skip: bool = False,
     ) -> tuple[ProductData | None, dict[str, Any]]:
         if not products:
             return None, {"raw_response": "", "picked_index": 0, "used_fallback": True}
+
+        if skip or len(products) == 1:
+            return products[0], {
+                "raw_response": "",
+                "picked_index": 1,
+                "used_fallback": True,
+                "reason": "skip_rerank",
+            }
 
         if not self.enabled:
             return products[0], {
@@ -88,15 +113,16 @@ class GapGPTClient:
             }
 
         prompt = (
-            f"درخواست کاربر:\n{user_message}\n\n"
+            f"درخواست:\n{search_query}\n\n"
             f"محصولات:\n{format_products_for_prompt(products)}\n\n"
-            "شماره بهترین محصول را بنویس (یا 0 اگر هیچ‌کدام مناسب نیست):"
+            "شماره بهترین محصول:"
         )
 
         try:
             response = await self._client.chat.completions.create(
                 model=self._settings.gapgpt_model,
-                temperature=0.1,
+                temperature=0.0,
+                max_tokens=8,
                 messages=[
                     {"role": "system", "content": RERANK_SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
@@ -105,7 +131,7 @@ class GapGPTClient:
             content = response.choices[0].message.content or ""
             picked = self._parse_product_index(content, len(products))
             if picked == 0:
-                logger.info("Rerank rejected all products for: %s", user_message)
+                logger.info("Rerank rejected all products for: %s", search_query)
                 return None, {
                     "raw_response": content,
                     "picked_index": 0,
@@ -142,39 +168,66 @@ class GapGPTClient:
             return index
         return 1
 
-    def _build_sales_prompt(self, user_message: str, products: list[ProductData]) -> str:
+    @staticmethod
+    def _product_has_rich_details(product: ProductData) -> bool:
+        return bool(product.specs) or bool(product.description.strip())
+
+    @staticmethod
+    def build_template_sales_response(search_query: str, product: ProductData) -> str:
+        colors = f" — رنگ: {'، '.join(product.colors)}" if product.colors else ""
+        specs = " — ".join(product.specs[:2]) if product.specs else ""
+        description = product.description.strip()
+
+        if specs:
+            detail = f" مشخصات: {specs}."
+        elif description:
+            detail = f" {description}."
+        else:
+            detail = "."
+
+        return (
+            f"برای «{search_query}»، «{product.name}» را پیشنهاد می‌کنم"
+            f"{colors} — قیمت: {product.price:,} تومان{detail}"
+        )
+
+    def _build_sales_prompt(self, search_query: str, products: list[ProductData]) -> str:
         products_text = format_products_for_prompt(products)
         return (
-            f"کاربر:\n{user_message}\n\n"
-            f"محصولات موجود:\n{products_text}\n\n"
-            "وظیفه:\n"
-            "بهترین محصول را در ۲-۴ جمله کوتاه پیشنهاد بده.\n\n"
-            "پاسخ باید شامل:\n"
-            "- نام محصول\n"
-            "- یک دلیل کوتاه برای پیشنهاد\n"
-            "- رنگ (در صورت وجود)\n"
-            "- قیمت\n\n"
-            "مهم:\n"
-            "- لینک یا URL ننویس\n"
-            "- مشخصات را خلاصه در یک جمله بگو، نه لیست\n"
-            "- لحن: محترمانه، دوستانه و فروشگاهی"
+            f"درخواست:\n{search_query}\n\n"
+            f"محصول:\n{products_text}\n\n"
+            "فقط نام، قیمت، رنگ و اطلاعات موجود در داده را در ۱-۲ جمله بگو."
         )
 
     async def stream_sales_response(
         self,
-        user_message: str,
+        search_query: str,
         products: list[ProductData],
     ) -> AsyncIterator[str]:
-        if not self.enabled:
-            yield self._fallback_response(user_message, products)
+        if not products:
+            yield (
+                "متأسفانه محصول مناسبی برای درخواست شما پیدا نکردم. "
+                "لطفاً با جزئیات بیشتری دوباره امتحان کنید."
+            )
             return
 
-        prompt = self._build_sales_prompt(user_message, products)
+        product = products[0]
+        if self._settings.gapgpt_fast_sales_template and not self._product_has_rich_details(
+            product
+        ):
+            yield self.build_template_sales_response(search_query, product)
+            return
+
+        if not self.enabled:
+            yield self.build_template_sales_response(search_query, product)
+            return
+
+        prompt = self._build_sales_prompt(search_query, products)
         streamed = False
         try:
             stream = await self._client.chat.completions.create(
                 model=self._settings.gapgpt_model,
-                temperature=0.4,
+                temperature=0.1,
+                max_tokens=120,
                 stream=True,
                 messages=[
                     {"role": "system", "content": SALES_SYSTEM_PROMPT},
@@ -190,18 +243,4 @@ class GapGPTClient:
         except Exception as exc:
             logger.exception("GapGPT streaming failed: %s", exc)
             if not streamed:
-                yield self._fallback_response(user_message, products)
-
-    def _fallback_response(self, user_message: str, products: list[ProductData]) -> str:
-        if not products:
-            return (
-                "متأسفانه محصول مناسبی برای درخواست شما پیدا نکردم. "
-                "لطفاً با جزئیات بیشتری دوباره امتحان کنید."
-            )
-
-        best = products[0]
-        colors = f" · رنگ: {'، '.join(best.colors)}" if best.colors else ""
-        return (
-            f"برای «{user_message}»، «{best.name}» را پیشنهاد می‌کنم. "
-            f"قیمت: {best.price:,} تومان{colors}."
-        )
+                yield self.build_template_sales_response(search_query, product)
