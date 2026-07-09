@@ -72,7 +72,7 @@ class SentenceTransformerBackend:
     def _load_model(self) -> SentenceTransformer:
         if self._model is None:
             logger.info("Loading embedding model: %s", self._model_name)
-            self._model = SentenceTransformer(self._model_name)
+            self._model = SentenceTransformer(self._model_name, trust_remote_code=True)
         return self._model
 
     def encode_passages(
