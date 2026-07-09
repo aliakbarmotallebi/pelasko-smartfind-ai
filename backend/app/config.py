@@ -22,9 +22,17 @@ class Settings(BaseSettings):
         alias="PRODUCT_BASE_URL",
     )
     embedding_model: str = Field(
-        default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        default="xmanii/maux-gte-persian",
         alias="EMBEDDING_MODEL",
     )
+    hakim_api_key: str = Field(default="mcinext", alias="HAKIM_API_KEY")
+    hakim_api_base_url: str = Field(
+        default="http://mcinext.ai/api",
+        alias="HAKIM_API_BASE_URL",
+    )
+    hakim_timeout: int = Field(default=60, alias="HAKIM_TIMEOUT", ge=10)
+    hakim_max_retries: int = Field(default=3, alias="HAKIM_MAX_RETRIES", ge=1, le=10)
+    hakim_retry_delay: int = Field(default=2, alias="HAKIM_RETRY_DELAY", ge=1)
     data_dir: str = Field(default="data", alias="DATA_DIR")
     search_top_k: int = Field(default=10, alias="SEARCH_TOP_K", ge=1, le=20)
     display_top_k: int = Field(default=3, alias="DISPLAY_TOP_K", ge=1, le=3)

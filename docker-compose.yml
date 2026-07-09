@@ -6,7 +6,7 @@ services:
     environment:
       PRODUCTS_API_URL: ${PRODUCTS_API_URL:-https://pelasko-morvarid.ir/api/products}
       PRODUCT_BASE_URL: ${PRODUCT_BASE_URL:-https://pelasko-morvarid.ir}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-xmanii/maux-gte-persian}
       DATA_DIR: /app/data
       SEARCH_TOP_K: ${SEARCH_TOP_K:-10}
       DISPLAY_TOP_K: ${DISPLAY_TOP_K:-3}
@@ -26,6 +26,7 @@ services:
       INDEX_REBUILD_INTERVAL_HOURS: ${INDEX_REBUILD_INTERVAL_HOURS:-24}
     volumes:
       - search-data:/app/data
+      - hf-cache:/root/.cache/huggingface
     restart: unless-stopped
 
   smartfind-client:
@@ -42,3 +43,4 @@ services:
 
 volumes:
   search-data:
+  hf-cache:

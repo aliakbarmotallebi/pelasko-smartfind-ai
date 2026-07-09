@@ -8,9 +8,9 @@ from pathlib import Path
 
 import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from app.config import Settings, get_settings
+from app.services.embeddings import create_embedding_backend
 from app.indexing.loader import fetch_all_products, normalize_products
 
 logger = logging.getLogger(__name__)
@@ -66,20 +66,14 @@ def build_index(settings: Settings | None = None) -> int:
     products = normalize_products(raw_products, cfg.product_base_url)
     texts = [item["search_text"] for item in products]
 
-    logger.info("Loading embedding model: %s", cfg.embedding_model)
-    model = SentenceTransformer(cfg.embedding_model)
+    model = create_embedding_backend(cfg)
 
-    logger.info("Encoding %d product texts", len(texts))
-    embeddings = model.encode(
+    logger.info("Encoding %d product texts with %s", len(texts), model.model_name)
+    embeddings = model.encode_passages(
         texts,
         batch_size=32,
         show_progress_bar=True,
-        convert_to_numpy=True,
-        normalize_embeddings=True,
     )
-
-    if not isinstance(embeddings, np.ndarray) or embeddings.ndim != 2:
-        raise RuntimeError("Embedding model returned unexpected output shape")
 
     logger.info("Building FAISS cosine similarity index")
     index = build_faiss_index(embeddings)

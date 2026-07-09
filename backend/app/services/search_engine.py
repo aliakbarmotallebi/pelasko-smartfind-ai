@@ -8,9 +8,9 @@ from typing import Any
 
 import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from app.config import Settings, get_settings
+from app.services.embeddings import EmbeddingBackend, create_embedding_backend
 from app.indexing.builder import build_index, read_index_meta
 from app.indexing.loader import to_product_data
 from app.models import ProductData
@@ -26,7 +26,7 @@ class SearchEngine:
 
         self._index: faiss.IndexFlatIP | None = None
         self._products: list[dict[str, Any]] | None = None
-        self._model: SentenceTransformer | None = None
+        self._model: EmbeddingBackend | None = None
 
         self._load_resources()
 
@@ -67,10 +67,9 @@ class SearchEngine:
             )
             build_index(self._settings)
 
-    def _load_model(self) -> SentenceTransformer:
+    def _load_model(self) -> EmbeddingBackend:
         if self._model is None:
-            logger.info("Loading embedding model: %s", self._settings.embedding_model)
-            self._model = SentenceTransformer(self._settings.embedding_model)
+            self._model = create_embedding_backend(self._settings)
         return self._model
 
     def _load_index_and_products(self) -> None:
@@ -118,11 +117,7 @@ class SearchEngine:
                 raise RuntimeError("Search engine is not initialized")
 
             model = self._load_model()
-            query_embedding = model.encode(
-                [normalized_query],
-                convert_to_numpy=True,
-                normalize_embeddings=True,
-            )
+            query_embedding = model.encode_queries([normalized_query])
 
             if not isinstance(query_embedding, np.ndarray):
                 raise RuntimeError("Failed to encode query")

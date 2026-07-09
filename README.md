@@ -78,7 +78,7 @@ make up-d
 | `CLIENT_URL` | آدرس کامل کلاینت (اختیاری) |
 | `CORS_ORIGINS` | originهای مجاز (اختیاری) |
 | `GAPGPT_API_KEY` | کلید GapGPT |
-| `EMBEDDING_MODEL` | مدل embedding (پیش‌فرض: multilingual برای فارسی) |
+| `EMBEDDING_MODEL` | مدل embedding (پیش‌فرض: `xmanii/maux-gte-persian` — فارسی، دانلود روی سرور) |
 | `SEARCH_TOP_K` | تعداد کاندیداهای جستجو (پیش‌فرض: 10) |
 | `SEARCH_MIN_SCORE` | حداقل شباهت برای قبول نتیجه (پیش‌فرض: 0.40) |
 | `PRODUCTS_API_URL` | API محصولات |
